@@ -37,11 +37,11 @@ export function ScoreCard({ scores }: ScoreCardProps) {
         </div>
       ))}
 
-      <div className={cn("rounded-[22px] bg-accent p-5", "text-[#3b356d]")}>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c4bcff]">
+      <div className={cn("rounded-[22px] bg-accent p-5")}>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7168b5]">
           Estimated Conversion Lift
         </p>
-        <p className="mt-3 text-2xl font-semibold capitalize text-[#f7f4ff]">
+        <p className="mt-3 text-2xl font-semibold capitalize text-[#2f295c]">
           {scores.estimated_conversion_lift}
         </p>
       </div>

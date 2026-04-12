@@ -42,6 +42,30 @@ const focusCards = [
   }
 ] as const;
 
+function Step({
+  number,
+  title,
+  children
+}: {
+  number: number;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[auto_1fr] gap-4">
+      <div className="flex pt-10">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/[0.02] text-sm font-semibold text-[#d8d2ca]">
+          {number}
+        </span>
+      </div>
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-ink">{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function InputForm({
   adCreative,
   landingPageUrl,
@@ -55,31 +79,9 @@ export function InputForm({
   const [creativeMode, setCreativeMode] = useState<"text" | "image">("text");
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    onFileSelect(event.target.files?.[0] ?? null);
-  }
-
-  function Step({
-    number,
-    title,
-    children
-  }: {
-    number: number;
-    title: string;
-    children: ReactNode;
-  }) {
-    return (
-      <div className="grid grid-cols-[auto_1fr] gap-4">
-        <div className="flex pt-10">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/[0.02] text-sm font-semibold text-[#d8d2ca]">
-            {number}
-          </span>
-        </div>
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-ink">{title}</h2>
-          {children}
-        </div>
-      </div>
-    );
+    const file = event.target.files?.[0] ?? null;
+    onFileSelect(file);
+    event.target.value = "";
   }
 
   return (
@@ -122,9 +124,9 @@ export function InputForm({
           </div>
         ) : (
           <div className="space-y-3">
-            <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/12 bg-[#26221f] px-6 py-6 text-center transition hover:border-primary">
+            <label className="flex min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white transition-all duration-200 ease-in-out hover:border-slate-500 group-focus-within:border-blue-500 group-focus-within:ring-2 group-focus-within:ring-blue-500">
               <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-              <span className="text-lg font-semibold text-ink">
+              <span className="text-lg font-semibold text-white">
                 {uploading
                   ? "Reading image..."
                   : hasUploadedImage

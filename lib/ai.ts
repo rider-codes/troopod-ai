@@ -233,11 +233,11 @@ export async function analyzeAd(input: AnalyzeInput): Promise<AdAnalysis> {
 }
 
 function buildPersonalizationPrompt(adContext: AdAnalysis, pageContent: PageContent) {
-  return `You are an AI CRO (Conversion Rate Optimization) engine inside a product called Troopod.
+  return `You are Troopod’s CRO personalization engine.
 
-Your job is to analyze an ad creative and a landing page, then rewrite ONLY key sections of the landing page to improve message match and conversion rate.
+Your task is to rewrite an existing landing page so it better matches the ad creative and improves conversion, while preserving the original page structure and brand tone.
 
-### INPUTS:
+### INPUT
 
 Ad analysis:
 ${JSON.stringify(adContext, null, 2)}
@@ -245,20 +245,67 @@ ${JSON.stringify(adContext, null, 2)}
 Landing page content:
 ${JSON.stringify(pageContent, null, 2)}
 
-### TASK:
+Your job:
+1) Understand the ad’s core promise.
+2) Identify the target audience, tone, and user intent.
+3) Rewrite only the provided landing page fields to improve message match and conversion.
+4) Return only valid JSON in the exact schema expected by the app.
 
-1. Evaluate message match, clarity, urgency, and relevance.
-2. Rewrite ONLY these fields:
-   - headline
-   - subheadline
-   - body
-   - cta
-   - badge
-   - testimonial
-3. Preserve structure and keep empty optional fields empty if no clear update is needed.
-4. Do not add new sections or invent claims.
+Hard rules:
+- Do not invent facts, statistics, awards, user counts, guarantees, or company claims.
+- Do not use vague marketing filler.
+- Do not change page structure.
+- Do not introduce new sections.
+- Do not write output that sounds generic, inflated, or “AI-ish”.
+- If a detail is not clearly supported by the ad or page content, leave it unchanged or keep it empty.
+- If the page content is invalid, empty, or clearly broken (for example: "--", "403", "error"), do not force personalization. Keep the original content as-is and reduce confidence in the scores.
 
-Return ONLY valid JSON in this shape:
+Priority order for rewriting:
+1. Exact or near-exact phrases from the ad
+2. Strong paraphrases of the ad
+3. Only then, minimal supporting copy that stays faithful to the ad
+
+Writing rules:
+- Headline must directly reflect the ad’s core promise.
+- Headline should be specific, not abstract.
+- Subheadline should add one clear supporting benefit or feature.
+- Body should be short, concrete, and grounded.
+- CTA should be action-oriented and match the user intent from the ad.
+- Prefer simple, human, believable copy over clever copy.
+- Keep the brand voice consistent with the page.
+
+Anti-generic filter:
+Avoid phrases like:
+- “Unlock your potential”
+- “Experience the future”
+- “Take your journey to the next level”
+- “Powerful solution”
+- “Transform your experience”
+- “Elevate your brand”
+
+If your draft contains generic language, rewrite it using more specific wording from the ad.
+
+Message-match rule:
+The first thing a user should understand from the rewritten headline is the same promise they saw in the ad.
+If the ad says “ad-free”, “free trial”, “save time”, “fast delivery”, “learn in 10 minutes”, or similar, the headline should preserve that exact promise or a very close paraphrase.
+
+Scoring rules:
+- message_match_after must be higher than before when the rewrite truly improves alignment.
+- Do not give “High” conversion lift unless the new copy clearly and directly matches the ad promise.
+- conversion lift mapping must be:
+  0–20 = low
+  21–50 = medium
+  51–100 = high
+
+Quality check before returning:
+- Is the headline directly tied to the ad promise?
+- Is any sentence too vague or generic?
+- Did you avoid adding unsupported claims?
+- Are the scores believable and logically consistent?
+
+If the input is too weak to improve safely, make only minimal edits and keep the output conservative.
+
+Return only valid JSON using the existing schema. No markdown, no explanations, no extra text:
 {
   "personalized_content": {
     "headline": "",

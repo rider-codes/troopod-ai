@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { toast } from "sonner";
 import { ChangeLog } from "@/components/ChangeLog";
 import { InputForm } from "@/components/InputForm";
 import { OutputPreview } from "@/components/OutputPreview";
@@ -21,16 +22,54 @@ const loadingSteps = [
   "Validating Output"
 ];
 
-async function fileToBase64(file: File) {
-  const buffer = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
+async function compressAndEncodeImage(file: File, maxSizeMB: number = 3): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        
+        // Resize if too large
+        const maxDimension = 1600;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
 
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
 
-  return btoa(binary);
+        // Compress
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.70);
+        
+        // Base64 size check
+        const base64Str = dataUrl.split(",")[1];
+        if (!base64Str) return reject(new Error("Compression failed."));
+        
+        const sizeInBytes = Math.ceil((base64Str.length * 3) / 4);
+        
+        if (sizeInBytes > maxSizeMB * 1024 * 1024) {
+          reject(new Error(`Even after compression, the image is too large. Please upload an image smaller than ${maxSizeMB}MB.`));
+        } else {
+          resolve(base64Str);
+        }
+      };
+      img.onerror = () => reject(new Error("Failed to load image for compression."));
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function HomePage() {
@@ -40,7 +79,6 @@ export default function HomePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [activeStep, setActiveStep] = useState<number>(-1);
-  const [error, setError] = useState("");
   const [result, setResult] = useState<PersonalizationResult | null>(null);
   const [originalContent, setOriginalContent] = useState<PageContent | null>(null);
   const [adAnalysis, setAdAnalysis] = useState<AdAnalysis | null>(null);
@@ -52,16 +90,15 @@ export default function HomePage() {
     }
 
     setIsUploading(true);
-    setError("");
 
     try {
-      const base64 = await fileToBase64(file);
+      const base64 = await compressAndEncodeImage(file);
       setUploadState({
         ad_image_base64: base64,
-        ad_mime_type: file.type || "image/png"
+        ad_mime_type: "image/jpeg"
       });
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Unable to read the selected image.");
+      toast.error(uploadError instanceof Error ? uploadError.message : "Unable to read the selected image.");
     } finally {
       setIsUploading(false);
     }
@@ -69,13 +106,12 @@ export default function HomePage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
     setResult(null);
     setOriginalContent(null);
     setAdAnalysis(null);
 
     if (!landingPageUrl.trim()) {
-      setError("Please provide a landing page URL.");
+      toast.error("Please provide a landing page URL.");
       return;
     }
 
@@ -88,7 +124,7 @@ export default function HomePage() {
     const adText = directImageUrl ? "" : trimmedCreative;
 
     if (!adText && !directImageUrl && !uploadState.ad_image_base64) {
-      setError("Add ad text, upload an image, or provide a direct image URL.");
+      toast.error("Add ad text, upload an image, or provide a direct image URL.");
       return;
     }
 
@@ -138,7 +174,7 @@ export default function HomePage() {
       setResult(personalizePayload as PersonalizationResult);
       setOriginalContent((personalizePayload as PersonalizationResult).page_content ?? null);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Something went wrong.");
+      toast.error(submitError instanceof Error ? submitError.message : "Something went wrong.");
     } finally {
       setIsRunning(false);
       setActiveStep(-1);
@@ -152,101 +188,115 @@ export default function HomePage() {
     setResult(null);
     setOriginalContent(null);
     setAdAnalysis(null);
-    setError("");
     setActiveStep(-1);
   }
 
   return (
-    <main className="min-h-screen">
-      <section className="mx-auto flex max-w-4xl flex-col gap-7 px-5 py-8 sm:px-8 sm:py-10">
-        <div className="space-y-4">
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            Turn your ad into a converting landing page
-          </h1>
-          <p className="max-w-4xl text-lg leading-8 text-[#c0b9b1]">
-            Paste an ad and a landing page URL to see how AI can rewrite your hero copy for better
-            message match, clearer value, and stronger conversions without rebuilding the page.
-          </p>
-          <Badge variant="outline" className="px-4 py-1 text-[#cfc9ff]">
-            AI Personalization Demo
-          </Badge>
-        </div>
-
-        <InputForm
-          adCreative={adCreative}
-          landingPageUrl={landingPageUrl}
-          uploading={isUploading}
-          hasUploadedImage={Boolean(uploadState.ad_image_base64)}
-          onAdCreativeChange={setAdCreative}
-          onLandingPageUrlChange={setLandingPageUrl}
-          onFileSelect={handleFileSelect}
-          onSubmit={handleSubmit}
-        />
-
-        {isRunning ? (
-          <div className="rounded-[1.6rem] border border-white/10 bg-[#26221f] p-6 shadow-panel">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#cfc9ff]">
-              Processing
-            </p>
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              {loadingSteps.map((step, index) => {
-                const state =
-                  activeStep === index
-                    ? "active"
-                    : activeStep > index
-                      ? "done"
-                      : "idle";
-
-                return (
-                  <div
-                    key={step}
-                    className={`rounded-2xl border p-4 text-sm font-medium ${
-                      state === "active"
-                        ? "border-primary/50 bg-primary text-[#282333]"
-                        : state === "done"
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                          : "border-white/10 bg-[#1d1a18] text-[#8d877f]"
-                    }`}
-                  >
-                    {step}
-                  </div>
-                );
-              })}
+    <div className="min-h-screen w-full bg-[#0B1220] text-white">
+      <div className="w-full px-6 lg:px-10 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* LEFT PANEL */}
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-y-auto max-h-[calc(100vh-48px)] space-y-8">
+            <div className="space-y-4">
+              <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Turn your ad into a converting landing page
+              </h1>
+              <p className="text-base leading-relaxed text-slate-300">
+                Paste an ad and a landing page URL to see how AI can rewrite your hero copy for better
+                message match, clearer value, and stronger conversions without rebuilding the page.
+              </p>
+              <Badge variant="outline" className="px-4 py-1 text-[#cfc9ff] border-slate-700">
+                AI Personalization Demo
+              </Badge>
             </div>
-          </div>
-        ) : null}
 
-        {error ? (
-          <div className="rounded-[1.4rem] border border-rose-400/20 bg-rose-500/10 p-5 text-sm text-rose-200">
-            {error}
+            <InputForm
+              adCreative={adCreative}
+              landingPageUrl={landingPageUrl}
+              uploading={isUploading}
+              hasUploadedImage={Boolean(uploadState.ad_image_base64)}
+              onAdCreativeChange={setAdCreative}
+              onLandingPageUrlChange={setLandingPageUrl}
+              onFileSelect={handleFileSelect}
+              onSubmit={handleSubmit}
+            />
           </div>
-        ) : null}
 
-        {result && originalContent ? (
-          <div className="grid gap-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-semibold text-ink">Personalization Result</h2>
-                <p className="mt-2 text-sm text-[#a59e96]">
-                  Ad tone:{" "}
-                  <span className="font-semibold capitalize text-ink">{adAnalysis?.tone || "n/a"}</span>
-                  {" | "}
-                  Page source:{" "}
-                  <span className="font-semibold uppercase text-ink">{originalContent.source}</span>
-                </p>
+          {/* RIGHT PANEL */}
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-y-auto max-h-[calc(100vh-48px)] space-y-6 flex flex-col">
+            {!isRunning && (!result || !originalContent) ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 text-slate-400 min-h-[400px]">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-800/50">
+                  <svg className="h-8 w-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+                <p>Run a personalization analysis to view results here.</p>
               </div>
+            ) : null}
 
-              <Button variant="outline" onClick={handleReset}>
-                Start New Run
-              </Button>
-            </div>
+            {isRunning ? (
+              <div className="rounded-[1.6rem] border border-white/10 bg-[#26221f] p-6 shadow-panel">
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#cfc9ff]">
+                  Processing
+                </p>
+                <div className="mt-5 grid gap-3 grid-cols-2">
+                  {loadingSteps.map((step, index) => {
+                    const state =
+                      activeStep === index
+                        ? "active"
+                        : activeStep > index
+                          ? "done"
+                          : "idle";
 
-            <ScoreCard scores={result.scores} />
-            <OutputPreview original={originalContent} personalized={result.personalized_content} />
-            <ChangeLog changes={result.changes_made} reasoning={result.ai_reasoning} />
+                    return (
+                      <div
+                        key={step}
+                        className={`rounded-2xl border p-4 text-sm font-medium ${
+                          state === "active"
+                            ? "border-primary/50 bg-primary text-[#282333]"
+                            : state === "done"
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                              : "border-white/10 bg-[#1d1a18] text-[#8d877f]"
+                        }`}
+                      >
+                        {step}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {result && originalContent ? (
+              <div className="grid gap-6 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-white">Personalization Result</h2>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Ad tone:{" "}
+                      <span className="font-semibold capitalize text-white">{adAnalysis?.tone || "n/a"}</span>
+                      {" | "}
+                      Page source:{" "}
+                      <span className="font-semibold uppercase text-white">{originalContent.source}</span>
+                    </p>
+                  </div>
+
+                  <Button variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" onClick={handleReset}>
+                    Start New Run
+                  </Button>
+                </div>
+
+                <ScoreCard scores={result.scores} />
+                <OutputPreview original={originalContent} personalized={result.personalized_content} />
+                <ChangeLog changes={result.changes_made} reasoning={result.ai_reasoning} />
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </section>
-    </main>
+
+        </div>
+      </div>
+    </div>
   );
 }

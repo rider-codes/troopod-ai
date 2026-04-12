@@ -21,6 +21,8 @@ function labelize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+const cardStyle = "bg-slate-900 text-slate-100 border border-slate-700 rounded-xl";
+
 function ContentColumn({
   title,
   content,
@@ -31,18 +33,13 @@ function ContentColumn({
   highlight?: boolean;
 }) {
   return (
-    <Card
-      className={cn(
-        "rounded-[30px]",
-        highlight ? "border-primary/30 bg-accent/95" : "bg-white/[0.03]"
-      )}
-    >
+    <Card className={cn(cardStyle)}>
       <CardHeader className="mb-2 flex-row items-center justify-between space-y-0">
-        <CardTitle className={cn("text-[1.75rem]", highlight ? "text-[#f7f4ff]" : "text-ink")}>
+        <CardTitle className="text-[1.75rem]">
           {title}
         </CardTitle>
         {highlight ? (
-          <Badge className="bg-[#e9e4ff] text-[#bdb5ff]">Personalized</Badge>
+          <Badge className="bg-slate-800 text-slate-300 border border-slate-600">Personalized</Badge>
         ) : null}
       </CardHeader>
 
@@ -50,25 +47,12 @@ function ContentColumn({
         {sections.map((section) => (
           <div
             key={section}
-            className={cn(
-              "rounded-[22px] p-4 ring-1",
-              highlight ? "bg-[#5a6078] ring-white/10" : "bg-[#141a2d] ring-white/5"
-            )}
+            className="rounded-xl border border-slate-800 bg-slate-800/50 p-4"
           >
-            <p
-              className={cn(
-                "text-xs font-semibold uppercase tracking-[0.18em]",
-                highlight ? "text-[#98a0be]" : "text-slate-500"
-              )}
-            >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               {labelize(section)}
             </p>
-            <p
-              className={cn(
-                "mt-2 whitespace-pre-wrap text-sm leading-8",
-                highlight ? "text-[#f7f4ff]" : "text-slate-100"
-              )}
-            >
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-8 text-slate-200">
               {content[section] || "--"}
             </p>
           </div>
