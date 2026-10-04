@@ -54,6 +54,9 @@ type GeminiResponse = {
   };
 };
 
+const GEMINI_TIMEOUT_MS = 45000;
+const MAX_AD_IMAGE_BYTES = 4 * 1024 * 1024;
+
 function getApiKey() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -122,7 +125,8 @@ async function callGemini(parts: GeminiPart[]) {
           }
         ]
       }),
-      cache: "no-store"
+      cache: "no-store",
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
     }
   );
 
@@ -204,13 +208,22 @@ Use one of these tone values only: professional, playful, urgent, aspirational, 
       }
     });
   } else if (input.ad_image_url) {
-    const response = await fetch(input.ad_image_url, { cache: "no-store" });
+    const response = await fetch(input.ad_image_url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) {
+      throw new Error(`Couldn't load the ad image (status ${response.status}). Check the image URL.`);
+    }
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.startsWith("image/")) {
       throw new Error("Only direct image URLs are supported for ad input.");
     }
 
     const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_AD_IMAGE_BYTES) {
+      throw new Error("The ad image is too large. Use an image under 4MB.");
+    }
     content.push({
       inline_data: {
         mime_type: normalizeImageMediaType(contentType),

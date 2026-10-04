@@ -6,10 +6,10 @@ type ButtonSize = "default" | "sm" | "lg";
 
 const variantClasses: Record<ButtonVariant, string> = {
   default:
-    "bg-primary text-[#282333] hover:bg-[#cfc7ff] border border-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.04)]",
+    "bg-indigo-500 text-white hover:bg-indigo-400 border border-transparent shadow-lg shadow-indigo-500/20",
   outline:
-    "border border-white/10 bg-white/[0.03] text-ink hover:border-primary/60 hover:text-primary",
-  ghost: "border border-transparent bg-transparent text-[#b7b0a8] hover:bg-white/[0.04] hover:text-ink"
+    "border border-white/10 bg-white/[0.03] text-ink hover:border-indigo-400/60 hover:text-indigo-200",
+  ghost: "border border-transparent bg-transparent text-slate-400 hover:bg-white/[0.05] hover:text-ink"
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -30,7 +30,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         className={cn(
-          "inline-flex items-center justify-center rounded-2xl font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex items-center justify-center rounded-xl font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:pointer-events-none disabled:opacity-50",
           variantClasses[variant],
           sizeClasses[size],
           className

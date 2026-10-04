@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { personalizePage } from "@/lib/ai";
 import { scrapeLandingPage } from "@/lib/scraper";
-import { personalizeRequestSchema } from "@/lib/validator";
+import { personalizeRequestSchema, toUserMessage } from "@/lib/validator";
 
 export async function POST(request: Request) {
   try {
@@ -19,6 +19,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // The scraper only returns the "fallback" source when the live page could not be read.
+    // Scoring placeholder copy would produce misleading results, so fail clearly instead.
+    if (pageContent.source === "fallback" || (!pageContent.headline && !pageContent.body)) {
+      return NextResponse.json(
+        {
+          error: "Unable to read landing page.",
+          details:
+            "We couldn't read any copy from that page. It may be blocking scrapers, require a login, or be unreachable. Try a different URL."
+        },
+        { status: 422 }
+      );
+    }
+
     const result = await personalizePage(input.ad_context, pageContent);
     return NextResponse.json({
       ...result,
@@ -28,7 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Unable to personalize landing page.",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: toUserMessage(error)
       },
       { status: 400 }
     );

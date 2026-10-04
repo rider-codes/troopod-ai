@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ChangeLogItem } from "@/types";
 
@@ -15,54 +13,56 @@ type ChangeLogProps = {
 export function ChangeLog({ changes, reasoning }: ChangeLogProps) {
   const [activeTab, setActiveTab] = useState<"changes" | "reasoning">("changes");
 
+  const tabs = [
+    { id: "changes", label: `Changes made (${changes.length})` },
+    { id: "reasoning", label: "AI reasoning" }
+  ] as const;
+
   return (
-    <Card className="rounded-[30px] p-6">
-      <CardContent className="p-0">
-        <div className="mb-6 flex flex-wrap gap-3">
-        <Button
-          variant={activeTab === "changes" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("changes")}
-        >
-          Changes Made
-        </Button>
-        <Button
-          variant={activeTab === "reasoning" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("reasoning")}
-        >
-          AI Reasoning
-        </Button>
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Explanation" className="inline-flex rounded-xl border border-white/10 bg-slate-950/50 p-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "rounded-lg px-4 py-1.5 text-sm font-medium transition",
+              activeTab === tab.id ? "bg-slate-800 text-white shadow" : "text-slate-400 hover:text-slate-200"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {activeTab === "changes" ? (
-        <div className="grid gap-3">
+        <ul className="grid gap-2">
           {changes.length ? (
             changes.map((change, index) => (
-              <div key={`${change.section}-${index}`} className="rounded-[22px] bg-[#141a2d] p-4">
+              <li key={`${change.section}-${index}`} className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="default" className="tracking-[0.12em] normal-case">
-                    {change.section}
-                  </Badge>
-                  <Badge variant="secondary" className="tracking-[0.12em] normal-case">
+                  <Badge className="capitalize tracking-normal">{change.section}</Badge>
+                  <Badge variant="secondary" className="tracking-normal">
                     {change.type}
                   </Badge>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-slate-300">{change.reason}</p>
-              </div>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{change.reason}</p>
+              </li>
             ))
           ) : (
-            <div className="rounded-[22px] bg-[#141a2d] p-4 text-sm text-slate-300">
-              No structural copy changes were applied in fallback mode.
-            </div>
+            <li className="rounded-xl border border-white/10 bg-slate-950/40 p-4 text-sm text-slate-300">
+              No copy changes were applied. The original copy was kept.
+            </li>
           )}
-        </div>
+        </ul>
       ) : (
-        <div className={cn("rounded-[22px] bg-[#141a2d] p-4 text-sm leading-7 text-slate-300")}>
+        <p className="rounded-xl border border-white/10 bg-slate-950/40 p-4 text-sm leading-7 text-slate-300">
           {reasoning || "No reasoning was returned."}
-        </div>
+        </p>
       )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

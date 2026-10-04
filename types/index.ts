@@ -22,7 +22,7 @@ export type PageContent = {
   cta: string;
   badge: string;
   testimonial: string;
-  source: "firecrawl" | "puppeteer" | "mock";
+  source: "firecrawl" | "puppeteer" | "fetch" | "fallback";
   page_url?: string;
 };
 

@@ -8,6 +8,8 @@ import { OutputPreview } from "@/components/OutputPreview";
 import { ScoreCard } from "@/components/ScoreCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getUrlError } from "@/lib/url-safety";
+import { MAX_AD_TEXT_LENGTH } from "@/lib/validator";
 import { AdAnalysis, PageContent, PersonalizationResult } from "@/types";
 
 type UploadState = {
@@ -21,6 +23,19 @@ const loadingSteps = [
   "Applying CRO",
   "Validating Output"
 ];
+
+// Non-JSON responses (e.g. a platform timeout page) should not surface as a cryptic parse error.
+async function readJson<T>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new Error(
+      response.ok
+        ? "The server returned an unreadable response."
+        : `The request failed (status ${response.status}). Please try again.`
+    );
+  }
+}
 
 async function compressAndEncodeImage(file: File, maxSizeMB: number = 3): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -106,12 +121,19 @@ export default function HomePage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    toast.dismiss();
     setResult(null);
     setOriginalContent(null);
     setAdAnalysis(null);
 
     if (!landingPageUrl.trim()) {
       toast.error("Please provide a landing page URL.");
+      return;
+    }
+
+    const urlError = getUrlError(landingPageUrl);
+    if (urlError) {
+      toast.error(urlError);
       return;
     }
 
@@ -125,6 +147,11 @@ export default function HomePage() {
 
     if (!adText && !directImageUrl && !uploadState.ad_image_base64) {
       toast.error("Add ad text, upload an image, or provide a direct image URL.");
+      return;
+    }
+
+    if (adText.length > MAX_AD_TEXT_LENGTH) {
+      toast.error(`Ad text must be ${MAX_AD_TEXT_LENGTH} characters or fewer.`);
       return;
     }
 
@@ -144,7 +171,7 @@ export default function HomePage() {
         })
       });
 
-      const analyzePayload = await analyzeResponse.json();
+      const analyzePayload = await readJson<AdAnalysis & { details?: string; error?: string }>(analyzeResponse);
       if (!analyzeResponse.ok) {
         throw new Error(analyzePayload.details || analyzePayload.error || "Ad analysis failed.");
       }
@@ -152,21 +179,27 @@ export default function HomePage() {
       const parsedAdAnalysis = analyzePayload as AdAnalysis;
       setAdAnalysis(parsedAdAnalysis);
 
+      // Scraping and rewriting happen in one request, so advance the step on a timer.
       setActiveStep(1);
-      setActiveStep(2);
-      const personalizeResponse = await fetch("/api/personalize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          ad_context: parsedAdAnalysis,
-          page_url: landingPageUrl
-        })
-      });
+      const stepTimer = setTimeout(() => setActiveStep(2), 6000);
+      let personalizeResponse: Response;
+      try {
+        personalizeResponse = await fetch("/api/personalize", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            ad_context: parsedAdAnalysis,
+            page_url: landingPageUrl
+          })
+        });
+      } finally {
+        clearTimeout(stepTimer);
+      }
 
       setActiveStep(3);
-      const personalizePayload = await personalizeResponse.json();
+      const personalizePayload = await readJson<PersonalizationResult & { details?: string; error?: string }>(personalizeResponse);
       if (!personalizeResponse.ok) {
         throw new Error(personalizePayload.details || personalizePayload.error || "Personalization failed.");
       }
@@ -182,6 +215,7 @@ export default function HomePage() {
   }
 
   function handleReset() {
+    toast.dismiss();
     setAdCreative("");
     setLandingPageUrl("");
     setUploadState({});
@@ -191,100 +225,97 @@ export default function HomePage() {
     setActiveStep(-1);
   }
 
-  return (
-    <div className="min-h-screen w-full bg-[#0B1220] text-white">
-      <div className="w-full px-6 lg:px-10 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* LEFT PANEL */}
-          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-y-auto max-h-[calc(100vh-48px)] space-y-8">
-            <div className="space-y-4">
-              <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Turn your ad into a converting landing page
-              </h1>
-              <p className="text-base leading-relaxed text-slate-300">
-                Paste an ad and a landing page URL to see how AI can rewrite your hero copy for better
-                message match, clearer value, and stronger conversions without rebuilding the page.
-              </p>
-              <Badge variant="outline" className="px-4 py-1 text-[#cfc9ff] border-slate-700">
-                AI Personalization Demo
-              </Badge>
-            </div>
+  function handleUseExample() {
+    setUploadState({});
+    setAdCreative("Turn more clicks into demo requests with landing pages that match each campaign.");
+    setLandingPageUrl("https://asana.com");
+  }
 
+  return (
+    <main className="min-h-screen w-full">
+      <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <header className="mb-8 max-w-3xl space-y-3">
+          <Badge className="border-indigo-400/30 text-indigo-200">AI personalization demo</Badge>
+          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            Turn your ad into a converting landing page
+          </h1>
+          <p className="text-base leading-relaxed text-slate-400">
+            Paste an ad and a landing page URL. AI rewrites the hero copy for stronger message match and clearer
+            value, without rebuilding the page.
+          </p>
+        </header>
+
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          {/* INPUT PANEL */}
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5 shadow-panel backdrop-blur sm:p-6 lg:sticky lg:top-6">
             <InputForm
               adCreative={adCreative}
               landingPageUrl={landingPageUrl}
               uploading={isUploading}
+              running={isRunning}
               hasUploadedImage={Boolean(uploadState.ad_image_base64)}
               onAdCreativeChange={setAdCreative}
               onLandingPageUrlChange={setLandingPageUrl}
               onFileSelect={handleFileSelect}
               onSubmit={handleSubmit}
+              onUseExample={handleUseExample}
             />
           </div>
 
-          {/* RIGHT PANEL */}
-          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-y-auto max-h-[calc(100vh-48px)] space-y-6 flex flex-col">
-            {!isRunning && (!result || !originalContent) ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 text-slate-400 min-h-[400px]">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-800/50">
-                  <svg className="h-8 w-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <p>Run a personalization analysis to view results here.</p>
-              </div>
-            ) : null}
-
+          {/* RESULTS PANEL */}
+          <div className="min-h-[420px] rounded-2xl border border-white/10 bg-slate-900/60 p-5 shadow-panel backdrop-blur sm:p-6">
             {isRunning ? (
-              <div className="rounded-[1.6rem] border border-white/10 bg-[#26221f] p-6 shadow-panel">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#cfc9ff]">
-                  Processing
-                </p>
-                <div className="mt-5 grid gap-3 grid-cols-2">
+              <div className="animate-fade-up" role="status" aria-live="polite">
+                <p className="text-sm font-semibold text-indigo-200">Working on it…</p>
+                <p className="mt-1 text-sm text-slate-400">This usually takes 20 to 30 seconds.</p>
+                <ol className="mt-6 grid gap-3">
                   {loadingSteps.map((step, index) => {
-                    const state =
-                      activeStep === index
-                        ? "active"
-                        : activeStep > index
-                          ? "done"
-                          : "idle";
+                    const state = activeStep === index ? "active" : activeStep > index ? "done" : "idle";
 
                     return (
-                      <div
+                      <li
                         key={step}
-                        className={`rounded-2xl border p-4 text-sm font-medium ${
+                        className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition ${
                           state === "active"
-                            ? "border-primary/50 bg-primary text-[#282333]"
+                            ? "border-indigo-400/50 bg-indigo-400/10 text-white"
                             : state === "done"
-                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                              : "border-white/10 bg-[#1d1a18] text-[#8d877f]"
+                              ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                              : "border-white/10 bg-slate-950/40 text-slate-500"
                         }`}
                       >
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                            state === "active"
+                              ? "animate-pulse bg-indigo-400 text-slate-950"
+                              : state === "done"
+                                ? "bg-emerald-400 text-slate-950"
+                                : "bg-slate-800 text-slate-500"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {state === "done" ? "✓" : index + 1}
+                        </span>
                         {step}
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
               </div>
-            ) : null}
-
-            {result && originalContent ? (
-              <div className="grid gap-6 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-4">
+            ) : result && originalContent ? (
+              <div className="animate-fade-up space-y-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-2xl font-semibold text-white">Personalization Result</h2>
-                    <p className="mt-2 text-sm text-slate-400">
+                    <h2 className="text-xl font-semibold text-white">Personalization result</h2>
+                    <p className="mt-1 text-sm text-slate-400">
                       Ad tone:{" "}
-                      <span className="font-semibold capitalize text-white">{adAnalysis?.tone || "n/a"}</span>
-                      {" | "}
+                      <span className="font-medium capitalize text-slate-200">{adAnalysis?.tone || "n/a"}</span>
+                      {" · "}
                       Page source:{" "}
-                      <span className="font-semibold uppercase text-white">{originalContent.source}</span>
+                      <span className="font-medium capitalize text-slate-200">{originalContent.source}</span>
                     </p>
                   </div>
-
-                  <Button variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" onClick={handleReset}>
-                    Start New Run
+                  <Button variant="outline" size="sm" onClick={handleReset}>
+                    Start new run
                   </Button>
                 </div>
 
@@ -292,11 +323,43 @@ export default function HomePage() {
                 <OutputPreview original={originalContent} personalized={result.personalized_content} />
                 <ChangeLog changes={result.changes_made} reasoning={result.ai_reasoning} />
               </div>
-            ) : null}
+            ) : (
+              <div className="flex min-h-[380px] flex-col items-center justify-center gap-4 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-400/10 ring-1 ring-indigo-400/20">
+                  <svg
+                    className="h-7 w-7 text-indigo-300"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.6}
+                      d="M9.8 4.2 11 7l2.8 1.2L11 9.4 9.8 12.2 8.6 9.4 5.8 8.2 8.6 7l1.2-2.8ZM17 13l.8 1.9 1.9.8-1.9.8L17 18.4l-.8-1.9-1.9-.8 1.9-.8L17 13Z"
+                    />
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium text-white">Your before/after preview appears here</p>
+                  <p className="max-w-sm text-sm text-slate-400">
+                    Add an ad and a landing page, or{" "}
+                    <button
+                      type="button"
+                      onClick={handleUseExample}
+                      className="text-indigo-300 underline-offset-4 hover:underline"
+                    >
+                      try an example
+                    </button>{" "}
+                    to fill it in for you.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
-
         </div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,4 +1,28 @@
 import { z } from "zod";
+import { getUrlError } from "@/lib/url-safety";
+
+export const MAX_AD_TEXT_LENGTH = 3000;
+// ~4MB of decoded image data once base64-encoded.
+const MAX_IMAGE_BASE64_LENGTH = 5_600_000;
+
+const publicUrlSchema = z
+  .string()
+  .trim()
+  .superRefine((value, ctx) => {
+    const message = getUrlError(value);
+    if (message) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  });
+
+/** Turns thrown errors (notably Zod validation errors) into a short, user-facing message. */
+export function toUserMessage(error: unknown, fallback = "Unknown error") {
+  if (error instanceof z.ZodError) {
+    return error.issues.map((issue) => issue.message).join(" ");
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
 
 const toneSchema = z.union([
   z.literal("professional"),
@@ -22,9 +46,17 @@ const scoreSchema = z
 
 export const analyzeRequestSchema = z
   .object({
-    ad_creative: z.string().trim().optional().default(""),
-    ad_image_url: z.string().url().optional(),
-    ad_image_base64: z.string().optional(),
+    ad_creative: z
+      .string()
+      .trim()
+      .max(MAX_AD_TEXT_LENGTH, `Ad text must be ${MAX_AD_TEXT_LENGTH} characters or fewer.`)
+      .optional()
+      .default(""),
+    ad_image_url: publicUrlSchema.optional(),
+    ad_image_base64: z
+      .string()
+      .max(MAX_IMAGE_BASE64_LENGTH, "Image is too large. Please upload a smaller image.")
+      .optional(),
     ad_mime_type: z.string().optional()
   })
   .superRefine((value, ctx) => {
@@ -53,7 +85,8 @@ export const pageContentSchema = z.object({
   source: z.union([
     z.literal("firecrawl"),
     z.literal("puppeteer"),
-    z.literal("mock")
+    z.literal("fetch"),
+    z.literal("fallback")
   ]),
   page_url: z.string().url().optional()
 });
@@ -106,7 +139,7 @@ export const personalizeRequestSchema = z
   .object({
     ad_context: adAnalysisSchema,
     page_content: pageContentSchema.optional(),
-    page_url: z.string().url().optional()
+    page_url: publicUrlSchema.optional()
   })
   .superRefine((value, ctx) => {
     if (!value.page_content && !value.page_url) {

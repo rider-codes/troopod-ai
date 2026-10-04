@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeAd } from "@/lib/ai";
-import { analyzeRequestSchema } from "@/lib/validator";
+import { analyzeRequestSchema, toUserMessage } from "@/lib/validator";
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Unable to analyze ad creative.",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: toUserMessage(error)
       },
       { status: 400 }
     );

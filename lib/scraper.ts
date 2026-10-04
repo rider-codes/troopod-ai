@@ -2,6 +2,7 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer-core";
 import { PageContent } from "@/types";
+import { getUrlError } from "@/lib/url-safety";
 import { pageContentSchema, safeTruncate } from "@/lib/validator";
 
 const MOCK_PAGE: PageContent = {
@@ -12,8 +13,22 @@ const MOCK_PAGE: PageContent = {
   cta: "Review personalized copy",
   badge: "CRO-safe fallback",
   testimonial: "",
-  source: "mock"
+  source: "fallback"
 };
+
+const SCRAPE_TIMEOUT_MS = 20000;
+
+// Text that scrapers pick up from widgets rather than page copy.
+const NOISE_PATTERN = /recaptcha|cookie|consent|privacy policy|accept all/i;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out.`)), ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 type ExtractedFields = Omit<PageContent, "source">;
 
@@ -24,7 +39,7 @@ function cleanText(value?: string | null) {
 function collectCandidateText($: cheerio.CheerioAPI, selectors: string[]) {
   for (const selector of selectors) {
     const text = cleanText($(selector).first().text());
-    if (text) {
+    if (text && !NOISE_PATTERN.test(text)) {
       return text;
     }
   }
@@ -110,9 +125,14 @@ async function scrapeWithFirecrawl(url: string) {
     apiKey: process.env.FIRECRAWL_API_KEY
   });
 
-  const result = await app.scrapeUrl(url, {
-    formats: ["html", "markdown"]
-  });
+  const result = await withTimeout(
+    app.scrapeUrl(url, {
+      formats: ["html", "markdown"],
+      timeout: SCRAPE_TIMEOUT_MS
+    }),
+    SCRAPE_TIMEOUT_MS + 5000,
+    "Firecrawl"
+  );
 
   if (!result.success) {
     throw new Error(result.error || "Firecrawl returned an error.");
@@ -145,7 +165,7 @@ async function scrapeWithPuppeteer(url: string) {
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: SCRAPE_TIMEOUT_MS });
     const html = await page.content();
     return normalizePageContent(extractFromHtml(html), "puppeteer", url);
   } finally {
@@ -161,7 +181,8 @@ async function scrapeWithFetch(url: string) {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     },
-    cache: "no-store"
+    cache: "no-store",
+    signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS)
   });
 
   if (!response.ok) {
@@ -173,6 +194,11 @@ async function scrapeWithFetch(url: string) {
 }
 
 export async function scrapeLandingPage(url: string): Promise<PageContent> {
+  const urlError = getUrlError(url);
+  if (urlError) {
+    throw new Error(urlError);
+  }
+
   try {
     return await scrapeWithFirecrawl(url);
   } catch {
@@ -181,7 +207,7 @@ export async function scrapeLandingPage(url: string): Promise<PageContent> {
     } catch {
       try {
         const extracted = await scrapeWithFetch(url);
-        return normalizePageContent(extracted, "mock", url);
+        return normalizePageContent(extracted, "fetch", url);
       } catch {
         return {
           ...MOCK_PAGE,

@@ -1,68 +1,65 @@
 "use client";
 
-import { ChangeEvent, FormEvent, ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { ChangeEvent, DragEvent, FormEvent, ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { MAX_AD_TEXT_LENGTH } from "@/lib/validator";
 
 type InputFormProps = {
   adCreative: string;
   landingPageUrl: string;
   uploading: boolean;
+  running: boolean;
   hasUploadedImage: boolean;
   onAdCreativeChange: (value: string) => void;
   onLandingPageUrlChange: (value: string) => void;
   onFileSelect: (file: File | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onUseExample: () => void;
 };
 
-const focusCards = [
-  {
-    title: "Message match",
-    description: "Align headline and hero with ad promise",
-    active: true
-  },
-  {
-    title: "CRO enhancements",
-    description: "Urgency, social proof, friction reduction",
-    active: true
-  },
-  {
-    title: "Tone & persona fit",
-    description: "Match ad voice to page copy",
-    active: true
-  },
-  {
-    title: "CTA optimization",
-    description: "Stronger calls to action placement",
-    active: false
-  }
+const focusAreas = [
+  { title: "Message match", description: "Headline mirrors the ad promise" },
+  { title: "CRO enhancements", description: "Clearer value, less friction" },
+  { title: "Tone & persona fit", description: "Ad voice carried into the copy" },
+  { title: "CTA optimization", description: "Action-oriented, intent-matched" }
 ] as const;
 
 function Step({
   number,
   title,
+  hint,
   children
 }: {
   number: number;
   title: string;
+  hint?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr] gap-4">
-      <div className="flex pt-10">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/[0.02] text-sm font-semibold text-[#d8d2ca]">
-          {number}
-        </span>
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-400/15 text-xs font-semibold text-indigo-200 ring-1 ring-indigo-400/30">
+            {number}
+          </span>
+          <h2 className="text-base font-semibold text-white">{title}</h2>
+        </div>
+        {hint}
       </div>
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-ink">{title}</h2>
-        {children}
-      </div>
-    </div>
+      {children}
+    </section>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -70,13 +67,30 @@ export function InputForm({
   adCreative,
   landingPageUrl,
   uploading,
+  running,
   hasUploadedImage,
   onAdCreativeChange,
   onLandingPageUrlChange,
   onFileSelect,
-  onSubmit
+  onSubmit,
+  onUseExample
 }: InputFormProps) {
   const [creativeMode, setCreativeMode] = useState<"text" | "image">("text");
+  const [dragging, setDragging] = useState(false);
+
+  // Only the active input mode is submitted, so clear the other one when switching.
+  function switchMode(mode: "text" | "image") {
+    if (mode === creativeMode) {
+      return;
+    }
+
+    if (mode === "image") {
+      onAdCreativeChange("");
+    } else {
+      onFileSelect(null);
+    }
+    setCreativeMode(mode);
+  }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -84,119 +98,182 @@ export function InputForm({
     event.target.value = "";
   }
 
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      onFileSelect(file);
+    }
+  }
+
+  const tabs = [
+    { id: "text", label: "Paste text / URL" },
+    { id: "image", label: "Upload image" }
+  ] as const;
+
   return (
-    <form onSubmit={onSubmit} className="grid gap-8">
-      <Step number={1} title="Ad creative">
-        <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1">
-          <Button
-            variant={creativeMode === "text" ? "outline" : "ghost"}
-            className={cn(
-              "rounded-xl border-0 px-5",
-              creativeMode === "text" && "bg-[#2d2a26] text-ink hover:bg-[#2d2a26]"
-            )}
-            onClick={() => setCreativeMode("text")}
+    <form onSubmit={onSubmit} noValidate className="grid gap-7">
+      <Step
+        number={1}
+        title="Ad creative"
+        hint={
+          <button
+            type="button"
+            onClick={() => {
+              setCreativeMode("text");
+              onUseExample();
+            }}
+            className="text-xs font-medium text-indigo-300 underline-offset-4 hover:text-indigo-200 hover:underline"
           >
-            Paste text / URL
-          </Button>
-          <Button
-            variant={creativeMode === "image" ? "outline" : "ghost"}
-            className={cn(
-              "rounded-xl border-0 px-5",
-              creativeMode === "image" && "bg-[#2d2a26] text-ink hover:bg-[#2d2a26]"
-            )}
-            onClick={() => setCreativeMode("image")}
-          >
-            Upload image
-          </Button>
+            Try an example
+          </button>
+        }
+      >
+        <div
+          role="tablist"
+          aria-label="Ad creative input"
+          className="grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-slate-950/50 p-1"
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={creativeMode === tab.id}
+              onClick={() => switchMode(tab.id)}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-medium transition",
+                creativeMode === tab.id
+                  ? "bg-slate-800 text-white shadow"
+                  : "text-slate-400 hover:text-slate-200"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {creativeMode === "text" ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <Textarea
               value={adCreative}
               onChange={(event) => onAdCreativeChange(event.target.value)}
-              placeholder="Paste your ad copy, Google Ads headline, Facebook ad text, or a direct image URL.&#10;E.g. 'Turn more clicks into demo requests with landing pages that match each campaign.'"
-              className="min-h-36 text-lg leading-8"
+              placeholder="Paste your ad copy, Google Ads headline, Facebook ad text, or a direct image URL. E.g. 'Turn more clicks into demo requests with landing pages that match each campaign.'"
+              maxLength={MAX_AD_TEXT_LENGTH}
+              className="min-h-32 resize-y text-base leading-7"
             />
-            <p className="text-sm text-[#9f988f]">
-              Paste plain ad copy or a direct image URL ending in `.png`, `.jpg`, `.jpeg`, `.gif`, or `.webp`.
-            </p>
+            <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+              <span>Plain ad copy, or a direct image URL (.png, .jpg, .gif, .webp).</span>
+              <span className="tabular-nums">
+                {adCreative.length}/{MAX_AD_TEXT_LENGTH}
+              </span>
+            </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <label className="flex min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white transition-all duration-200 ease-in-out hover:border-slate-500 group-focus-within:border-blue-500 group-focus-within:ring-2 group-focus-within:ring-blue-500">
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-              <span className="text-lg font-semibold text-white">
+          <div className="space-y-2">
+            <label
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              className={cn(
+                "flex min-h-32 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition focus-within:ring-2 focus-within:ring-indigo-400/40",
+                dragging || hasUploadedImage
+                  ? "border-indigo-400 bg-indigo-400/10"
+                  : "border-slate-700 bg-slate-950/40 hover:border-slate-500"
+              )}
+            >
+              <input type="file" accept="image/*" className="sr-only" onChange={handleFileChange} />
+              <span className="text-sm font-semibold text-white">
                 {uploading
                   ? "Reading image..."
                   : hasUploadedImage
-                    ? "Image ready for analysis"
-                    : "Upload your ad creative image"}
+                    ? "Image ready for analysis ✓"
+                    : "Drop your ad image here, or click to browse"}
               </span>
-              <span className="text-sm text-[#9f988f]">
-                PNG, JPG, GIF, and WEBP work best for the current flow.
+              <span className="text-xs text-slate-400">
+                {hasUploadedImage
+                  ? "Click to replace it."
+                  : "PNG, JPG, GIF or WEBP. Large images are compressed automatically."}
               </span>
             </label>
-            <p className="text-sm text-[#9f988f]">
-              Use this when the ad meaning is mostly visual and not just headline copy.
-            </p>
+            {hasUploadedImage ? (
+              <button
+                type="button"
+                onClick={() => onFileSelect(null)}
+                className="text-xs text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
+              >
+                Remove image
+              </button>
+            ) : null}
           </div>
         )}
       </Step>
 
       <Step number={2} title="Landing page URL">
-        <div className="space-y-3">
+        <div className="space-y-2">
           <Input
+            type="url"
+            inputMode="url"
+            autoComplete="url"
             value={landingPageUrl}
             onChange={(event) => onLandingPageUrlChange(event.target.value)}
             placeholder="https://yoursite.com/landing-page"
-            className="h-14 text-lg"
+            className="h-12 text-base"
           />
-          <p className="text-sm text-[#9f988f]">
-            The AI will fetch and analyze your existing page, then enhance it rather than replace it.
+          <p className="text-xs text-slate-500">
+            We fetch the live page and enhance its hero copy rather than replace it.
           </p>
         </div>
       </Step>
 
-      <Step number={3} title="Optimization focus">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {focusCards.map((card) => (
-            <Card
-              key={card.title}
-              className={cn(
-                "rounded-2xl px-5 py-4 shadow-none",
-                card.active
-                  ? "border-primary/70 bg-accent text-[#36306b]"
-                  : "border-white/10 bg-[#201d1a] text-ink"
-              )}
+      <Step number={3} title="What we optimize">
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {focusAreas.map((area) => (
+            <li
+              key={area.title}
+              className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-3"
             >
-              <p className="text-lg font-semibold">{card.title}</p>
-              <p className={`mt-1 text-sm ${card.active ? "text-[#8d8873]" : "text-[#beb7af]"}`}>
-                {card.description}
-              </p>
-            </Card>
+              <svg
+                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 1 1 1.4-1.4l3.8 3.8 6.8-6.8a1 1 0 0 1 1.4 0Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-white">{area.title}</p>
+                <p className="text-xs text-slate-400">{area.description}</p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </Step>
 
-      <Button type="submit" variant="outline" size="lg" className="text-lg">
-        Personalize landing page <span className="ml-2 text-xl">-&gt;</span>
+      <Button type="submit" size="lg" disabled={running || uploading} className="w-full gap-2 text-base">
+        {running ? (
+          <>
+            <Spinner /> Personalizing...
+          </>
+        ) : (
+          <>
+            Personalize landing page <span aria-hidden="true">→</span>
+          </>
+        )}
       </Button>
 
-      <Card className="rounded-2xl bg-white/[0.04] shadow-none">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-3">
-            <Badge variant="outline">Assumptions</Badge>
-            <CardTitle className="text-base">How this demo behaves</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <CardDescription className="text-sm leading-6 text-[#9d968d]">
-            This demo simulates page fetching when a live scrape is unavailable, keeps your existing
-            page structure intact, and can use uploaded ad images for visual analysis.
-          </CardDescription>
-        </CardContent>
-      </Card>
+      <p className="text-center text-xs text-slate-500">
+        If a live scrape isn&apos;t possible we&apos;ll tell you instead of guessing. Your page structure is never
+        changed.
+      </p>
     </form>
   );
 }

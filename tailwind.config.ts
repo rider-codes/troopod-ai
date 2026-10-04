@@ -8,11 +8,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        canvas: "#1d1b19",
-        ink: "#f4efe8",
-        primary: "#d9d4ff",
-        accent: "#ece9ff",
-        border: "#4a4640"
+        canvas: "#0b1020",
+        ink: "#e8ecf8",
+        primary: "#818cf8",
+        accent: "#c7d2fe",
+        border: "#27304a"
       },
       boxShadow: {
         panel: "0 24px 80px rgba(0, 0, 0, 0.28)"
